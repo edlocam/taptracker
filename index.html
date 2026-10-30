@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#1f6feb">
+<meta name="theme-color" content="#ea580c">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Tap Tracker">
 <link rel="manifest" href="manifest.webmanifest">
@@ -13,11 +13,11 @@
 <style>
   :root {
     --bg: #f6f7f9; --card: #fff; --text: #1b1f24; --muted: #6a737d;
-    --accent: #1f6feb; --accent-press: #1858bd; --border: #e1e4e8; --danger: #d1242f;
+    --accent: #ea580c; --accent-press: #c2410c; --border: #e1e4e8; --danger: #d1242f;
   }
   @media (prefers-color-scheme: dark) {
     :root { --bg: #0d1117; --card: #161b22; --text: #e6edf3; --muted: #8b949e;
-            --accent: #388bfd; --accent-press: #1f6feb; --border: #30363d; --danger: #f85149; }
+            --accent: #fb923c; --accent-press: #ea580c; --border: #30363d; --danger: #f85149; }
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   body { margin: 0; font: 16px/1.4 -apple-system, system-ui, Segoe UI, Roboto, sans-serif;
@@ -35,7 +35,7 @@
   .note { color: var(--text); font-size: .95rem; margin-top: 2px; white-space: pre-wrap; word-break: break-word; }
   #tap { display: block; width: 100%; margin: 18px 0 0; padding: 38px 12px; border: 0;
          border-radius: 22px; background: var(--accent); color: #fff; font-size: 1.6rem;
-         font-weight: 700; cursor: pointer; box-shadow: 0 6px 18px rgba(31,111,235,.35);
+         font-weight: 700; cursor: pointer; box-shadow: 0 6px 18px rgba(234,88,12,.35);
          transition: transform .06s, background .1s; }
   #tap:active { transform: scale(.98); background: var(--accent-press); }
   #last { text-align: center; color: var(--muted); min-height: 1.4em; margin: 10px 0 14px; }
