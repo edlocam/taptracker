@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1f6feb">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Tap Tracker">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" href="icons/icon-192.png">
+<title>Tap Tracker</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #fff; --text: #1b1f24; --muted: #6a737d;
+    --accent: #1f6feb; --accent-press: #1858bd; --border: #e1e4e8; --danger: #d1242f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0d1117; --card: #161b22; --text: #e6edf3; --muted: #8b949e;
+            --accent: #388bfd; --accent-press: #1f6feb; --border: #30363d; --danger: #f85149; }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { margin: 0; font: 16px/1.4 -apple-system, system-ui, Segoe UI, Roboto, sans-serif;
+         background: var(--bg); color: var(--text);
+         padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+  main { max-width: 560px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 1.2rem; margin: 8px 0 12px; }
+  .row { display: flex; gap: 8px; }
+  select, input, button { font: inherit; color: inherit; }
+  select, input[type=text] { flex: 1; min-width: 0; padding: 10px; border-radius: 10px;
+         border: 1px solid var(--border); background: var(--card); }
+  .btn { padding: 10px 14px; border-radius: 10px; border: 1px solid var(--border);
+         background: var(--card); cursor: pointer; }
+  .btn.danger { color: var(--danger); }
+  .note { color: var(--text); font-size: .95rem; margin-top: 2px; white-space: pre-wrap; word-break: break-word; }
+  #tap { display: block; width: 100%; margin: 18px 0 0; padding: 38px 12px; border: 0;
+         border-radius: 22px; background: var(--accent); color: #fff; font-size: 1.6rem;
+         font-weight: 700; cursor: pointer; box-shadow: 0 6px 18px rgba(31,111,235,.35);
+         transition: transform .06s, background .1s; }
+  #tap:active { transform: scale(.98); background: var(--accent-press); }
+  #last { text-align: center; color: var(--muted); min-height: 1.4em; margin: 10px 0 14px; }
+  .stats { display: flex; gap: 8px; margin-bottom: 14px; }
+  .stat { flex: 1; background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+          padding: 10px; text-align: center; }
+  .stat b { display: block; font-size: 1.3rem; }
+  .stat span { color: var(--muted); font-size: .8rem; }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li { display: flex; align-items: center; gap: 8px; background: var(--card);
+       border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; }
+  li .when { flex: 1; }
+  li .when small { display: block; color: var(--muted); }
+  li button { border: 0; background: none; color: var(--muted); font-size: 1.1rem; cursor: pointer; padding: 6px; }
+  .tools { display: flex; gap: 8px; margin: 14px 0; flex-wrap: wrap; }
+  .empty { text-align: center; color: var(--muted); padding: 24px 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>⏱ Tap Tracker</h1>
+
+  <div class="row">
+    <select id="tracker" aria-label="Tracker"></select>
+    <button class="btn" id="add">+ New</button>
+  </div>
+
+  <button id="tap">TAP</button>
+  <input type="text" id="note" placeholder="Add a note (optional)" maxlength="300" autocomplete="off" style="width:100%;margin-top:8px">
+  <div id="last"></div>
+
+  <div class="stats">
+    <div class="stat"><b id="sTotal">0</b><span>Total</span></div>
+    <div class="stat"><b id="sToday">0</b><span>Today</span></div>
+    <div class="stat"><b id="sAvg">–</b><span>Avg gap</span></div>
+  </div>
+
+  <ul id="log"></ul>
+
+  <div class="tools">
+    <button class="btn" id="undo">Undo last</button>
+    <button class="btn" id="csv">Export CSV</button>
+    <button class="btn" id="csvAll">Export all</button>
+    <button class="btn danger" id="clear">Clear</button>
+    <button class="btn danger" id="del">Delete tracker</button>
+  </div>
+</main>
+
+<script>
+(() => {
+  const KEY = 'tap-tracker-v1';
+  const $ = id => document.getElementById(id);
+  let state = load();
+
+  function load() {
+    try {
+      const s = JSON.parse(localStorage.getItem(KEY));
+      if (s && s.trackers && s.trackers.length) {
+        // migrate any plain timestamp strings to {t, note} objects
+        s.trackers.forEach(t => { t.events = t.events.map(e => typeof e === 'string' ? { t: e, note: '' } : e); });
+        return s;
+      }
+    } catch (e) {}
+    return { current: 0, trackers: [{ name: 'Occurrences', events: [] }] };
+  }
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
+  const cur = () => state.trackers[state.current];
+
+  const fmtDate = d => d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+  const fmtTime = d => d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+  const sameDay = (a, b) => a.toDateString() === b.toDateString();
+
+  function ago(ms) {
+    const s = Math.round(ms / 1000);
+    if (s < 60) return s + 's';
+    const m = Math.round(s / 60);
+    if (m < 60) return m + 'm';
+    const h = Math.floor(m / 60), rm = m % 60;
+    if (h < 48) return h + 'h' + (rm ? ' ' + rm + 'm' : '');
+    return Math.round(h / 24) + 'd';
+  }
+
+  function render() {
+    const sel = $('tracker');
+    sel.innerHTML = '';
+    state.trackers.forEach((t, i) => {
+      const o = document.createElement('option');
+      o.value = i; o.textContent = t.name; sel.appendChild(o);
+    });
+    sel.value = state.current;
+
+    const ev = cur().events; // {t: ISO string, note}, oldest first
+    const dates = ev.map(e => new Date(e.t));
+    const now = new Date();
+    $('sTotal').textContent = ev.length;
+    $('sToday').textContent = dates.filter(d => sameDay(d, now)).length;
+    $('sAvg').textContent = ev.length > 1 ? ago((dates[dates.length - 1] - dates[0]) / (ev.length - 1)) : '–';
+
+    const last = dates[dates.length - 1];
+    $('last').textContent = last ? 'Last: ' + fmtDate(last) + ' at ' + fmtTime(last) : 'No taps yet';
+
+    const ul = $('log');
+    ul.innerHTML = '';
+    if (!ev.length) { ul.innerHTML = '<div class="empty">Tap the button to log the first occurrence.</div>'; return; }
+    for (let i = ev.length - 1; i >= 0; i--) {
+      const d = dates[i];
+      const li = document.createElement('li');
+      const gap = i > 0 ? 'Gap: ' + ago(d - dates[i - 1]) : 'First entry';
+      li.innerHTML = '<div class="when"><b></b><div class="note"></div><small></small></div>' +
+        '<button class="edit" title="Edit note" aria-label="Edit note">✎</button>' +
+        '<button class="rm" title="Delete entry" aria-label="Delete entry">✕</button>';
+      li.querySelector('b').textContent = fmtDate(d) + ' · ' + fmtTime(d);
+      const noteEl = li.querySelector('.note');
+      if (ev[i].note) noteEl.textContent = ev[i].note; else noteEl.remove();
+      li.querySelector('small').textContent = '#' + (i + 1) + ' · ' + gap;
+      li.querySelector('.edit').onclick = () => {
+        const n = prompt('Note for this entry:', ev[i].note || '');
+        if (n === null) return;
+        ev[i].note = n.trim(); save(); render();
+      };
+      li.querySelector('.rm').onclick = () => { ev.splice(i, 1); save(); render(); };
+      ul.appendChild(li);
+    }
+  }
+
+  $('tap').onclick = () => {
+    const noteEl = $('note');
+    cur().events.push({ t: new Date().toISOString(), note: noteEl.value.trim() });
+    noteEl.value = '';
+    save(); render();
+    if (navigator.vibrate) navigator.vibrate(30);
+  };
+  $('note').addEventListener('keydown', e => { if (e.key === 'Enter') $('tap').click(); });
+  $('tracker').onchange = e => { state.current = +e.target.value; save(); render(); };
+  $('add').onclick = () => {
+    const name = (prompt('Name this tracker (e.g. "Headache", "Dog barked"):') || '').trim();
+    if (!name) return;
+    state.trackers.push({ name, events: [] });
+    state.current = state.trackers.length - 1;
+    save(); render();
+  };
+  $('undo').onclick = () => { cur().events.pop(); save(); render(); };
+  $('clear').onclick = () => {
+    if (cur().events.length && confirm('Delete all ' + cur().events.length + ' entries in "' + cur().name + '"?')) {
+      cur().events = []; save(); render();
+    }
+  };
+  $('del').onclick = () => {
+    if (state.trackers.length < 2) { alert('You need at least one tracker.'); return; }
+    if (confirm('Delete tracker "' + cur().name + '" and all its entries?')) {
+      state.trackers.splice(state.current, 1);
+      state.current = 0; save(); render();
+    }
+  };
+
+  const q = s => '"' + String(s).replace(/"/g, '""') + '"';
+  function rows(t) {
+    return t.events.map(e => {
+      const d = new Date(e.t);
+      return [q(t.name), d.toLocaleDateString(), d.toLocaleTimeString(), e.t, q(e.note || '')].join(',');
+    });
+  }
+  function download(name, lines) {
+    const blob = new Blob(['Tracker,Date,Time,ISO timestamp,Note\n' + lines.join('\n')], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = name; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+  $('csv').onclick = () => download(cur().name.replace(/\W+/g, '_') + '.csv', rows(cur()));
+  $('csvAll').onclick = () => download('tap-tracker-all.csv', state.trackers.flatMap(rows));
+
+  render();
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+})();
+</script>
+</body>
+</html>
