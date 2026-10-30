@@ -44,6 +44,17 @@
           padding: 10px; text-align: center; }
   .stat b { display: block; font-size: 1.3rem; }
   .stat span { color: var(--muted); font-size: .8rem; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-bottom: 14px; }
+  .seg { display: flex; gap: 6px; margin-bottom: 8px; }
+  .seg button { flex: 1; padding: 7px 0; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); cursor: pointer; font-size: .9rem; }
+  .seg button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .ctitle { color: var(--muted); font-size: .85rem; margin-bottom: 4px; }
+  .cinfo { color: var(--muted); font-size: .85rem; text-align: center; min-height: 1.3em; margin-top: 4px; }
+  #chart svg { width: 100%; height: auto; display: block; }
+  .bar { fill: var(--accent); }
+  .grid { stroke: var(--border); stroke-width: 1; }
+  .lbl { fill: var(--muted); font-size: 10px; }
+  .hit { fill: transparent; cursor: pointer; }
   ul { list-style: none; margin: 0; padding: 0; }
   li { display: flex; align-items: center; gap: 8px; background: var(--card);
        border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; }
@@ -72,6 +83,18 @@
     <div class="stat"><b id="sToday">0</b><span>Today</span></div>
     <div class="stat"><b id="sAvg">–</b><span>Avg gap</span></div>
   </div>
+
+  <section class="card">
+    <div class="seg" id="range">
+      <button data-r="week">Week</button>
+      <button data-r="month">Month</button>
+      <button data-r="year">Year</button>
+      <button data-r="all">All</button>
+    </div>
+    <div class="ctitle" id="chartTitle"></div>
+    <div id="chart"></div>
+    <div class="cinfo" id="chartInfo"></div>
+  </section>
 
   <ul id="log"></ul>
 
@@ -118,6 +141,89 @@
     return Math.round(h / 24) + 'd';
   }
 
+  // ---------- chart ----------
+  const startOfDay = d => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+  const dKey = d => d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate();
+  const mKey = d => d.getFullYear() + '-' + d.getMonth();
+  let chartBuckets = [];
+
+  function makeBuckets(range, dates) {
+    const today = startOfDay(new Date());
+    let unit = 'day', start;
+    if (range === 'week') start = addDays(today, -6);
+    else if (range === 'month') start = addDays(today, -29);
+    else if (range === 'year') { unit = 'month'; start = new Date(today.getFullYear(), today.getMonth() - 11, 1); }
+    else {
+      start = addDays(today, -6);
+      if (dates.length) {
+        const first = startOfDay(dates.reduce((a, b) => a < b ? a : b));
+        if (Math.round((today - first) / 864e5) <= 90) { if (first < start) start = first; }
+        else { unit = 'month'; start = new Date(first.getFullYear(), first.getMonth(), 1); }
+      }
+    }
+    const out = [];
+    if (unit === 'day') {
+      for (let d = start; d <= today; d = addDays(d, 1)) out.push({ d, unit, key: dKey(d), n: 0 });
+    } else {
+      for (let d = start; d <= today; d = new Date(d.getFullYear(), d.getMonth() + 1, 1)) out.push({ d, unit, key: mKey(d), n: 0 });
+    }
+    const idx = {};
+    out.forEach((b, i) => { idx[b.key] = i; });
+    dates.forEach(x => { const i = idx[unit === 'day' ? dKey(x) : mKey(x)]; if (i !== undefined) out[i].n++; });
+    return out;
+  }
+
+  function tickLabel(b, range) {
+    if (b.unit === 'month') {
+      return b.d.toLocaleDateString(undefined, { month: 'short' }) + (range === 'all' ? " '" + String(b.d.getFullYear()).slice(2) : '');
+    }
+    return range === 'week' ? b.d.toLocaleDateString(undefined, { weekday: 'short' }) : (b.d.getMonth() + 1) + '/' + b.d.getDate();
+  }
+  const fullLabel = b => b.unit === 'month'
+    ? b.d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+    : b.d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+
+  function drawChart(dates) {
+    const range = state.range || 'week';
+    document.querySelectorAll('#range button').forEach(b => b.classList.toggle('on', b.dataset.r === range));
+    const bs = chartBuckets = makeBuckets(range, dates);
+    const unit = bs[0].unit;
+    $('chartTitle').textContent = range === 'week' ? 'Taps per day · last 7 days'
+      : range === 'month' ? 'Taps per day · last 30 days'
+      : range === 'year' ? 'Taps per month · last 12 months'
+      : unit === 'month' ? 'Taps per month · all time' : 'Taps per day · all time';
+
+    const W = 360, H = 190, L = 28, R = 6, T = 10, B = 24;
+    const iw = W - L - R, ih = H - T - B;
+    let max = Math.max(1, ...bs.map(b => b.n)), step = 1;
+    if (max > 4) { step = Math.ceil(max / 4); max = step * 4; }
+    const bw = iw / bs.length;
+    const lblStep = Math.ceil(bs.length / (range === 'year' ? 12 : 7));
+
+    let s = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Taps chart">';
+    for (let v = 0; v <= max; v += step) {
+      const y = T + ih - v / max * ih;
+      s += '<line class="grid" x1="' + L + '" x2="' + (W - R) + '" y1="' + y + '" y2="' + y + '"/>' +
+           '<text class="lbl" x="' + (L - 4) + '" y="' + (y + 3) + '" text-anchor="end">' + v + '</text>';
+    }
+    bs.forEach((b, i) => {
+      const x = L + i * bw, h = b.n / max * ih;
+      if (b.n) s += '<rect class="bar" x="' + (x + bw * 0.15) + '" y="' + (T + ih - h) + '" width="' + (bw * 0.7) +
+                    '" height="' + h + '" rx="' + Math.min(3, bw * 0.2) + '"/>';
+      if (i % lblStep === (bs.length - 1) % lblStep)
+        s += '<text class="lbl" x="' + (x + bw / 2) + '" y="' + (H - 8) + '" text-anchor="middle">' + tickLabel(b, range) + '</text>';
+      s += '<rect class="hit" data-i="' + i + '" x="' + x + '" y="' + T + '" width="' + bw + '" height="' + ih + '"/>';
+    });
+    $('chart').innerHTML = s + '</svg>';
+
+    const total = bs.reduce((a, b) => a + b.n, 0);
+    const peak = bs.reduce((a, b) => b.n > a.n ? b : a, bs[0]);
+    $('chartInfo').textContent = total
+      ? 'Total ' + total + ' · Peak ' + peak.n + ' on ' + fullLabel(peak) + ' · tap a bar for details'
+      : 'No taps in this range yet';
+  }
+
   function render() {
     const sel = $('tracker');
     sel.innerHTML = '';
@@ -136,6 +242,7 @@
 
     const last = dates[dates.length - 1];
     $('last').textContent = last ? 'Last: ' + fmtDate(last) + ' at ' + fmtTime(last) : 'No taps yet';
+    drawChart(dates);
 
     const ul = $('log');
     ul.innerHTML = '';
@@ -169,6 +276,17 @@
     if (navigator.vibrate) navigator.vibrate(30);
   };
   $('note').addEventListener('keydown', e => { if (e.key === 'Enter') $('tap').click(); });
+  $('range').addEventListener('click', e => {
+    const r = e.target.dataset && e.target.dataset.r;
+    if (!r) return;
+    state.range = r; save(); render();
+  });
+  $('chart').addEventListener('click', e => {
+    const i = e.target.dataset && e.target.dataset.i;
+    if (i === undefined) return;
+    const b = chartBuckets[+i];
+    $('chartInfo').textContent = fullLabel(b) + ': ' + b.n + (b.n === 1 ? ' tap' : ' taps');
+  });
   $('tracker').onchange = e => { state.current = +e.target.value; save(); render(); };
   $('add').onclick = () => {
     const name = (prompt('Name this tracker (e.g. "Headache", "Dog barked"):') || '').trim();

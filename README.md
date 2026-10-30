@@ -4,6 +4,7 @@ A tiny installable web app (PWA). Tap the big button and it records the exact da
 
 - Multiple named trackers (e.g. "Headache", "Dog barked", "Fire alarm")
 - Optional note on each tap (type it in the box under the button, then tap; edit it later with ✎)
+- Bar chart of taps per day or month (Week, Month, Year, All time); tap a bar for its count
 - History with time gaps between entries, plus total / today / average gap
 - Undo, delete individual entries, export to CSV
 - Works offline; data stays on your device (localStorage), nothing is sent anywhere
