@@ -3,6 +3,7 @@
 A tiny installable web app (PWA). Tap the big button and it records the exact date and time, so you can track how often something happens.
 
 - Multiple named trackers (e.g. "Headache", "Dog barked", "Fire alarm")
+- Each tracker has its own color (TAP button, chart, header); change it with the color swatch
 - Optional note on each tap (type it in the box under the button, then tap; edit it later with ✎)
 - Bar chart of taps per day or month (Week, Month, Year, All time); tap a bar for its count
 - History with time gaps between entries, plus total / today / average gap

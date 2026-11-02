@@ -35,7 +35,7 @@
   .note { color: var(--text); font-size: .95rem; margin-top: 2px; white-space: pre-wrap; word-break: break-word; }
   #tap { display: block; width: 100%; margin: 18px 0 0; padding: 38px 12px; border: 0;
          border-radius: 22px; background: var(--accent); color: #fff; font-size: 1.6rem;
-         font-weight: 700; cursor: pointer; box-shadow: 0 6px 18px rgba(234,88,12,.35);
+         font-weight: 700; cursor: pointer; box-shadow: 0 6px 18px var(--glow, rgba(234,88,12,.35));
          transition: transform .06s, background .1s; }
   #tap:active { transform: scale(.98); background: var(--accent-press); }
   #last { text-align: center; color: var(--muted); min-height: 1.4em; margin: 10px 0 14px; }
@@ -55,6 +55,11 @@
   .grid { stroke: var(--border); stroke-width: 1; }
   .lbl { fill: var(--muted); font-size: 10px; }
   .hit { fill: transparent; cursor: pointer; }
+  .swatch { width: 44px; padding: 0; background: var(--accent); }
+  #palette { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+  #palette[hidden] { display: none; }
+  #palette button { width: 34px; height: 34px; border-radius: 50%; border: 3px solid transparent; cursor: pointer; }
+  #palette button.on { border-color: var(--text); }
   ul { list-style: none; margin: 0; padding: 0; }
   li { display: flex; align-items: center; gap: 8px; background: var(--card);
        border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; }
@@ -71,8 +76,10 @@
 
   <div class="row">
     <select id="tracker" aria-label="Tracker"></select>
+    <button class="btn swatch" id="color" title="Change color" aria-label="Change color"></button>
     <button class="btn" id="add">+ New</button>
   </div>
+  <div id="palette" hidden></div>
 
   <button id="tap">TAP</button>
   <input type="text" id="note" placeholder="Add a note (optional)" maxlength="300" autocomplete="off" style="width:100%;margin-top:8px">
@@ -111,6 +118,7 @@
 (() => {
   const KEY = 'tap-tracker-v1';
   const $ = id => document.getElementById(id);
+  const PALETTE = ['#ea580c', '#2563eb', '#15803d', '#7c3aed', '#dc2626', '#0f766e', '#db2777', '#475569'];
   let state = load();
 
   function load() {
@@ -118,11 +126,14 @@
       const s = JSON.parse(localStorage.getItem(KEY));
       if (s && s.trackers && s.trackers.length) {
         // migrate any plain timestamp strings to {t, note} objects
-        s.trackers.forEach(t => { t.events = t.events.map(e => typeof e === 'string' ? { t: e, note: '' } : e); });
+        s.trackers.forEach((t, i) => {
+          t.events = t.events.map(e => typeof e === 'string' ? { t: e, note: '' } : e);
+          t.color = t.color || PALETTE[i % PALETTE.length];
+        });
         return s;
       }
     } catch (e) {}
-    return { current: 0, trackers: [{ name: 'Occurrences', events: [] }] };
+    return { current: 0, trackers: [{ name: 'Occurrences', color: PALETTE[0], events: [] }] };
   }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
   const cur = () => state.trackers[state.current];
@@ -224,6 +235,30 @@
       : 'No taps in this range yet';
   }
 
+  function shade(hex, f) {
+    const n = parseInt(hex.slice(1), 16);
+    return 'rgb(' + [n >> 16, (n >> 8) & 255, n & 255].map(v => Math.round(v * f)).join(',') + ')';
+  }
+
+  function applyColor() {
+    const c = cur().color, n = parseInt(c.slice(1), 16), root = document.documentElement.style;
+    root.setProperty('--accent', c);
+    root.setProperty('--accent-press', shade(c, 0.8));
+    root.setProperty('--glow', 'rgba(' + (n >> 16) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',.35)');
+    document.querySelector('meta[name=theme-color]').setAttribute('content', c);
+    $('tracker').style.borderLeft = '8px solid ' + c;
+    const pal = $('palette');
+    pal.innerHTML = '';
+    PALETTE.forEach(p => {
+      const b = document.createElement('button');
+      b.style.background = p;
+      b.setAttribute('aria-label', 'Color ' + p);
+      if (p === c) b.className = 'on';
+      b.onclick = () => { cur().color = p; save(); pal.hidden = true; render(); };
+      pal.appendChild(b);
+    });
+  }
+
   function render() {
     const sel = $('tracker');
     sel.innerHTML = '';
@@ -232,6 +267,7 @@
       o.value = i; o.textContent = t.name; sel.appendChild(o);
     });
     sel.value = state.current;
+    applyColor();
 
     const ev = cur().events; // {t: ISO string, note}, oldest first
     const dates = ev.map(e => new Date(e.t));
@@ -287,11 +323,14 @@
     const b = chartBuckets[+i];
     $('chartInfo').textContent = fullLabel(b) + ': ' + b.n + (b.n === 1 ? ' tap' : ' taps');
   });
+  $('color').onclick = () => { $('palette').hidden = !$('palette').hidden; };
   $('tracker').onchange = e => { state.current = +e.target.value; save(); render(); };
   $('add').onclick = () => {
     const name = (prompt('Name this tracker (e.g. "Headache", "Dog barked"):') || '').trim();
     if (!name) return;
-    state.trackers.push({ name, events: [] });
+    const used = state.trackers.map(t => t.color);
+    const color = PALETTE.find(p => !used.includes(p)) || PALETTE[state.trackers.length % PALETTE.length];
+    state.trackers.push({ name, color, events: [] });
     state.current = state.trackers.length - 1;
     save(); render();
   };
